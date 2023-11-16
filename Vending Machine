@@ -1,0 +1,140 @@
+import PySimpleGUI as sg
+from gpiozero import Button
+from gpiozero import Servo
+from gpiozero.pins.pigpio import PiGPIOFactory
+import time
+
+# Define colors
+button_color = ('#FF69B4', 'white')  # Pink button color
+background_color = 'pink'  # Light pink background color
+font_color = 'black'
+
+# Set the GPIO pin for the servo
+servo_gpio = 17
+
+
+# Vending machine class
+class VendingMachine:
+    def __init__(self, window):
+        self.balance = 0
+        self.servo_gpio = 17
+        # Initialize pigpio factory
+        self.pi_gpio_factory = PiGPIOFactory()
+        # Initialize Servo with pigpio factory
+        self.servo_gpio = 17
+        self.servo = Servo(self.servo_gpio, pin_factory=self.pi_gpio_factory)
+        self.item_prices = {'Juicy Fruit': (50, 5), 'Diet Coke': (75, 2), 'Sweet Chili Heat Doritoes': (100, 0), 'Mars Bar': (120, 3), 'Mountain Dew (2L)': (200, 1)}
+        self.selected_item = None
+        self.window = window
+
+    def handle_event(self, event):
+        if event == "RETURN":
+            self.return_change()
+            self.selected_item = None
+        elif event in ["5", "10", "25", "100", "200"]:
+            self.add_balance(int(event))
+        else:
+            self.handle_gui_button_press(event)
+
+    def add_balance(self, amount):
+        self.balance += amount
+        self.update_gui(f"{amount} cents added to balance. Total: {self.balance} cents")
+
+    def handle_gui_button_press(self, event):
+        if event in self.item_prices:
+            item_price, quantity = self.item_prices[event]
+            if quantity > 0:
+                if self.balance >= item_price:
+                    self.activate_servo()
+                    self.selected_item = event
+                    self.balance -= item_price
+                    self.item_prices[event] = (item_price, quantity - 1)
+                    self.update_gui(f"{event} dispensed! Item cost: {item_price} cents. Change: {self.balance} cents")
+                else:
+                    self.update_gui(f"Not enough balance to purchase {event}. Balance: {self.balance} cents")
+            else:
+                self.update_gui(f"{event} is SOLD OUT")
+        else:
+            self.update_gui(f"Invalid selection: {event}")
+
+    def activate_servo(self):
+        # Move the servo to dispense the item
+        self.servo.min()
+        time.sleep(1)  # Adjust the sleep time as needed
+        self.servo.max()
+    def return_change(self):
+        if self.balance > 0:
+            change_amount = self.balance
+            self.balance = 0
+            self.update_gui(f"Returning change: {change_amount} cents")
+
+    def update_gui(self, message):
+        self.window['-OUTPUT-'].print(f"{message}\n")
+        self.window['-BALANCE-'].update(f'Balance: {self.balance} cents')
+        self.window['-SELECTED-'].update(f'Selected Item: {self.selected_item}')
+
+        # Update quantity display on the right side
+        quantity_text = ""
+        for item, (price, quantity) in self.item_prices.items():
+            quantity_text += f"{item}: {quantity} left\n"
+        self.window['-QUANTITY-'].update(quantity_text)
+
+# Define the GUI using PySimpleGUI
+def create_gui():
+    layout = [
+        [sg.Multiline(size=(40, 10), key='-OUTPUT-', background_color=background_color, text_color=font_color, autoscroll=True)],
+        [
+            sg.Column([
+                [sg.Text('ENTER COINS:', text_color=font_color)],
+                [sg.Button('5', button_color=button_color, size=(3, 1))],
+                [sg.Button('10', button_color=button_color, size=(3, 1))],
+                [sg.Button('25', button_color=button_color, size=(3, 1))],
+                [sg.Button('100', button_color=button_color, size=(3, 1))],
+                [sg.Button('200', button_color=button_color, size=(3, 1))],
+            ], element_justification='center', background_color=background_color),
+            sg.Column([
+                [sg.Text('SELECT ITEM:', text_color=font_color)],
+                [sg.Button('Juicy Fruit', button_color=button_color, size=(15, 1))],
+                [sg.Button('Diet Coke', button_color=button_color, size=(15, 1))],
+                [sg.Button('Sweet Chili Heat Doritoes', button_color=button_color, size=(15, 1))],
+                [sg.Button('Mars Bar', button_color=button_color, size=(15, 1))],
+                [sg.Button('Mountain Dew (2L)', button_color=button_color, size=(15, 1))],
+            ], element_justification='center', background_color=background_color),
+            sg.Column([
+                [sg.Text(f'Selected Item: None', key='-SELECTED-', text_color=font_color)],
+                [sg.Button('RETURN', button_color=('white', 'red'), size=(10, 1))],
+                [sg.Text(f'Balance: 0 cents', key='-BALANCE-', text_color=font_color)],
+                [sg.Text('', size=(30, 10), key='-QUANTITY-', text_color=font_color, background_color=background_color)],
+            ], element_justification='center', background_color=background_color),
+        ],
+    ]
+
+    window = sg.Window('Vending Machine', layout, return_keyboard_events=True, background_color=background_color)
+
+    return window
+
+def main():
+    # Create the GUI window
+    window = create_gui()
+
+    vending_machine = VendingMachine(window)
+
+    # Create a Button instance for GPIO 5
+    gpio5_button = Button(5)
+    gpio5_button.when_pressed = vending_machine.return_change
+
+    while True:
+        event, values = window.read()
+
+        if event in (sg.WIN_CLOSED, 'Exit'):
+            print("Shutting down...")
+            break
+
+        # Update vending machine state or perform actions based on the event
+        vending_machine.handle_event(event)
+
+    window.close()
+
+if __name__ == '__main__':
+    main()
+
