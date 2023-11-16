@@ -1,0 +1,4 @@
+[Waiting State] --(user adds coins)--> [Adding Coins State]
+[Waiting State] --(user selects item)--> [Dispensing State] --(item dispensed)--> [Waiting State]
+[Waiting State] --(user presses return button)--> [Counting Change State] --(change counted)--> [Waiting State]
+[Dispensing State] --(item sold out)--> [Sold Out State]
